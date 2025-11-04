@@ -1,54 +1,119 @@
 import cv2
 from ultralytics import YOLO
-import time
 
-model = YOLO("yolo12n.pt")
+# --- Settings ---
+# You can change this to a video file path
+VIDEO_SOURCE = './car_driving.mp4'
+# YOLO model (n=nano is fast, m=medium is more accurate)
+YOLO_MODEL = 'yolo12n.pt' 
+# Target class to track (0 is 'person' in the default COCO dataset)
+TARGET_CLASS = 2
+# Confidence threshold for YOLO detection
+CONF_THRESHOLD = 0.2 
 
-cap = cv2.VideoCapture("./car_driving.mp4")
+def main():
+    # Load YOLO model
+    try:
+        model = YOLO(YOLO_MODEL)
+    except Exception as e:
+        print(f"Error loading YOLO model: {e}")
+        print("Please ensure 'ultralytics' is installed: pip install ultralytics")
+        return
 
-tracker = None 
+    # Open video source
+    cap = cv2.VideoCapture(VIDEO_SOURCE)
+    if not cap.isOpened():
+        print(f"Error: Could not open video source {VIDEO_SOURCE}")
+        return
 
-frame_count = 0
+    tracker = None
+    
+    print("--- Controls ---")
+    print("Press 'q' to quit.")
+    print("Press 'r' to reset tracker and re-detect.")
+    print("----------------")
 
-found = False
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            print("Error: Failed to grab frame or video ended.")
+            break
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
+        # Check for user input
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            break
+        if key == ord('r'):
+            tracker = None  # Reset tracker
+            print("Tracker reset. Re-detecting...")
 
-    if frame_count % 20 == 0 and not found:
-        results = model.predict(frame, imgsz=640, classes=[2], conf=0.1, iou=0.1, verbose=False)
-        boxes = results[0].boxes
-        if len(boxes) > 0:
-            found = True
-            box = boxes[0].xyxy[0]
-            x, y = int(box[0]), int(box[1])
-            w = int(box[2] - box[0])
-            h = int(box[3] - box[1])
-            bbox_xywh = (x, y, w, h)
+        # --- STATE 1: DETECTION (No active tracker) ---
+        if tracker is None:
+            cv2.putText(frame, "Detecting...", (10, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
 
-            tracker = cv2.legacy.TrackerCSRT_create()
-            tracker.init(frame, bbox_xywh)
-            x, y, w, h = bbox_xywh
-            cv2.rectangle(frame, (int(x), int(y)), (int(x + w), int(y + h)), (0, 0, 255), 2)
-            cv2.putText(frame, "DETECTION", (int(x), int(y) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+            # Run YOLO detection
+            # verbose=False silences the Ultralytics log output for each frame
+            results = model(frame, stream=True, verbose=False)
+
+            # Find the first valid target
+            for r in results:
+                boxes = r.boxes
+                for box in boxes:
+                    # Check class and confidence
+                    if box.cls[0] == TARGET_CLASS and box.conf[0] > CONF_THRESHOLD:
+                        # Get bounding box in (x1, y1, x2, y2) format
+                        bbox_xyxy = box.xyxy[0].cpu().numpy().astype(int)
+                        x1, y1, x2, y2 = bbox_xyxy
+                        
+                        # --- CRITICAL STEP ---
+                        # Convert (x1, y1, x2, y2) to (x, y, w, h) for OpenCV tracker
+                        bbox_xywh = (x1, y1, x2 - x1, y2 - y1)
+
+                        # Initialize the CSRT tracker
+                        tracker = cv2.TrackerCSRT_create()
+                        tracker.init(frame, bbox_xywh)
+
+                        print(f"Tracker initialized on class {TARGET_CLASS} at {bbox_xywh}")
+
+                        # Draw the initial detection box (Green)
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        cv2.putText(frame, "Target Acquired", (x1, y1 - 10), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                        
+                        # Stop searching once a target is found
+                        break
+                if tracker is not None:
+                    break
+
+        # --- STATE 2: TRACKING (Tracker is active) ---
         else:
-            print("No car detected, resetting tracker.")
-            found = False
+            # Update the tracker
+            success, bbox = tracker.update(frame)
 
-    frame_count += 1
+            if success:
+                # bbox is (x, y, w, h)
+                x, y, w, h = [int(v) for v in bbox]
+                x2 = x + w
+                y2 = y + h
 
-    if found:
-        success, box = tracker.update(frame)
-        cv2.rectangle(frame, (int(box[0]), int(box[1])), (int(box[0] + box[2]), int(box[1] + box[3])), (0, 255, 0), 2)
-        cv2.putText(frame, "TRACKING", (int(box[0]), int(box[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        print(success, box)
-        found = success
+                # Draw the tracking box (Blue)
+                cv2.rectangle(frame, (x, y), (x2, y2), (255, 0, 0), 2)
+                cv2.putText(frame, "Tracking", (x, y - 10), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+            else:
+                # Tracking failed
+                cv2.putText(frame, "Tracking FAILED", (10, 30), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
+                # Reset tracker to re-detect in the next frame
+                tracker = None
 
-    cv2.imshow("Frame", frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        # Display the resulting frame
+        cv2.imshow("YOLO + CSRT Tracker", frame)
 
-cap.release()
-cv2.destroyAllWindows()
+    # Clean up
+    cap.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
