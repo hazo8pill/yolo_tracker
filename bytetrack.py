@@ -35,7 +35,7 @@ while True:
     cv2.putText(annotated_frame, f"FPS: {avg_fps:.2f}", (10, 30), 
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     
-    cv2.imshow("Frame", annotated_frame)
+    # cv2.imshow("Frame", annotated_frame)
     
     # Print FPS to console every 30 frames
     if frame_count % 30 == 0:

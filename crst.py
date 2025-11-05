@@ -130,7 +130,7 @@ def main():
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
         # Display the resulting frame
-        cv2.imshow("YOLO + CSRT Tracker", frame)
+        # cv2.imshow("YOLO + CSRT Tracker", frame)
         
         # Print FPS to console every 30 frames
         if frame_count % 30 == 0:
