@@ -3,7 +3,7 @@ name = "tracking"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.9,<3.12"
+requires-python = ">=3.10"
 dependencies = [
     "lap>=0.5.12",
     "norfair>=2.1.1",
@@ -11,7 +11,6 @@ dependencies = [
     "opencv-contrib-python>=4.12.0.88",
     "opencv-python>=4.11.0.86",
     "pandas>=2.3.3",
-    "pkg-resources",
     "seaborn>=0.13.2",
     "tqdm>=4.67.1",
     "ultralytics>=8.3.223",
