@@ -1,6 +1,5 @@
 import cv2
 import time
-from collections import deque
 from ultralytics import YOLO
 
 # --- Settings ---
@@ -31,7 +30,8 @@ def main():
     tracker = None
     
     # FPS calculation variables
-    fps_counter = deque(maxlen=30)  # Store last 30 frame times for smooth average
+    fps_list = []
+    frame_count = 0
     
     print("--- Controls ---")
     print("Press 'q' to quit.")
@@ -117,23 +117,32 @@ def main():
 
         # Calculate FPS
         end_time = time.time()
-        frame_time = end_time - start_time
-        fps_counter.append(frame_time)
+        processing_time = end_time - start_time
+        fps = 1.0 / processing_time if processing_time > 0 else 0
+        fps_list.append(fps)
+        frame_count += 1
         
-        # Calculate average FPS from the last 30 frames
-        if len(fps_counter) > 0:
-            avg_frame_time = sum(fps_counter) / len(fps_counter)
-            fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
-        else:
-            fps = 0
+        # Calculate average FPS (over last 30 frames for smoother display)
+        avg_fps = sum(fps_list[-30:]) / len(fps_list[-30:]) if fps_list else fps
         
         # Display FPS on the frame
-        fps_text = f"FPS: {fps:.1f}"
-        cv2.putText(frame, fps_text, (10, frame.shape[0] - 20), 
+        cv2.putText(frame, f"FPS: {avg_fps:.2f}", (10, frame.shape[0] - 20), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
         # Display the resulting frame
         cv2.imshow("YOLO + CSRT Tracker", frame)
+        
+        # Print FPS to console every 30 frames
+        if frame_count % 30 == 0:
+            print(f"Average FPS (last 30 frames): {avg_fps:.2f}")
+
+    # Print final statistics
+    if fps_list:
+        print(f"\nFinal Statistics:")
+        print(f"Total frames processed: {frame_count}")
+        print(f"Average FPS: {sum(fps_list) / len(fps_list):.2f}")
+        print(f"Min FPS: {min(fps_list):.2f}")
+        print(f"Max FPS: {max(fps_list):.2f}")
 
     # Clean up
     cap.release()
