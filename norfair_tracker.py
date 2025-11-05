@@ -35,7 +35,7 @@ class YOLOn:
         self.model.iou = iou_threshold
         if classes is not None:
             self.model.classes = classes
-        detections = self.model.predict(img, simgsz=image_size)
+        detections = self.model.predict(img, imgsz=image_size)
         return detections
 
 
