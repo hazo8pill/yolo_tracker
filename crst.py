@@ -1,4 +1,6 @@
 import cv2
+import time
+from collections import deque
 from ultralytics import YOLO
 
 # --- Settings ---
@@ -28,12 +30,17 @@ def main():
 
     tracker = None
     
+    # FPS calculation variables
+    fps_counter = deque(maxlen=30)  # Store last 30 frame times for smooth average
+    
     print("--- Controls ---")
     print("Press 'q' to quit.")
     print("Press 'r' to reset tracker and re-detect.")
     print("----------------")
 
     while True:
+        # Start timing
+        start_time = time.time()
         ret, frame = cap.read()
         if not ret:
             print("Error: Failed to grab frame or video ended.")
@@ -107,6 +114,23 @@ def main():
                             cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 0, 255), 2)
                 # Reset tracker to re-detect in the next frame
                 tracker = None
+
+        # Calculate FPS
+        end_time = time.time()
+        frame_time = end_time - start_time
+        fps_counter.append(frame_time)
+        
+        # Calculate average FPS from the last 30 frames
+        if len(fps_counter) > 0:
+            avg_frame_time = sum(fps_counter) / len(fps_counter)
+            fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
+        else:
+            fps = 0
+        
+        # Display FPS on the frame
+        fps_text = f"FPS: {fps:.1f}"
+        cv2.putText(frame, fps_text, (10, frame.shape[0] - 20), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
 
         # Display the resulting frame
         cv2.imshow("YOLO + CSRT Tracker", frame)
