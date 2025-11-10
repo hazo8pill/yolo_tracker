@@ -29,7 +29,7 @@ def parse_args():
         description="YOLO + Multi-Tracker Fusion (Refactored)")
     p.add_argument("--video", type=str, default="./driving.mp4",
                    help="Path to video source or camera index (int).")
-    p.add_argument("--model", type=str, default="yolov8n.pt",
+    p.add_argument("--model", type=str, default="yolo11s.pt",
                    help="Ultralytics model path or name.")
     p.add_argument("--target", type=int, default=2,
                    help="Target class id (e.g., 2 for 'car' in COCO).")
@@ -52,6 +52,52 @@ def parse_args():
                    default="./nano/nanotrack_head_sim.onnx")
     return p.parse_args()
 
+def preprocess_frame(frame):
+    """Applies necessary single-frame enhancements."""
+
+    # --- 1. Low-Light Enhancement (CLAHE) ---
+    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    l_enhanced = clahe.apply(l)
+    frame_clahe = cv2.cvtColor(cv2.merge((l_enhanced, a, b)), cv2.COLOR_LAB2BGR)
+
+    # --- 2. Noise Reduction (Optional) ---
+    # frame_denoised = cv2.GaussianBlur(frame_clahe, (3, 3), 0)
+
+    return frame_clahe
+
+def unsharp_mask(img, kernel_size=(5, 5), sigma=1.0, alpha=1.5, threshold=0):
+    """
+    Applies the Unsharp Masking technique for image sharpening.
+
+    Args:
+        img (np.ndarray): The source image.
+        kernel_size (tuple): The size of the Gaussian kernel (e.g., (5, 5)).
+        sigma (float): Gaussian standard deviation.
+        alpha (float): Strength of the sharpening effect (typically 1.0 to 3.0).
+        threshold (int): Minimum difference threshold (optional, often set to 0).
+    """
+    # 1. Create the blurred version (the 'unsharp' mask basis)
+    blurred = cv2.GaussianBlur(img, kernel_size, sigma)
+
+    # 2. Calculate the "mask" or "detail map" (Original - Blurred)
+    # This result contains the high-frequency content (edges)
+    mask = cv2.subtract(img, blurred)
+
+    # Optional: Threshold the mask to only sharpen significant edges (reduce noise amplification)
+    if threshold > 0:
+        mask[np.abs(mask) < threshold] = 0
+
+    # 3. Add the scaled mask back to the original image
+    # cv2.addWeighted is used for efficient scaling and blending:
+    # Output = img * (1.0 + alpha) + blurred * (-alpha) + gamma (gamma=0)
+    sharpened = cv2.addWeighted(img, 1.0 + alpha, blurred, -alpha, 0)
+
+    # Note: A simpler approach for the final step is:
+    # sharpened = cv2.add(img, cv2.convertScaleAbs(mask, alpha=alpha))
+
+    return sharpened
 
 def main():
     args = parse_args()
@@ -100,6 +146,8 @@ def main():
                 print("[INFO] Video ended or failed to grab frame.")
                 break
 
+            frame = cv2.resize(frame, (640, 640))
+            frame = cv2.medianBlur(frame, 5)
             H, W = frame.shape[:2]
             frame_count += 1
 
